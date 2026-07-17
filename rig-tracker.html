@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Rig Tracker</title>
+<style>
+  :root{
+    --bg:#0B0D10;
+    --panel:#14171C;
+    --panel-2:#1B1F26;
+    --line:#2A2F38;
+    --text:#E8E6E1;
+    --text-dim:#8B8F96;
+    --amber:#FFB627;
+    --amber-dim:#7A5C13;
+    --danger:#FF5C5C;
+    --mono: ui-monospace, 'SF Mono', 'Roboto Mono', 'Courier New', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%; width:100%; overflow:hidden;
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    overscroll-behavior:none;
+  }
+  #app{position:fixed; inset:0; overflow:hidden;}
+  video{display:none;}
+  canvas#stage{
+    position:absolute; inset:0; width:100%; height:100%;
+    touch-action:none; display:block; background:#000;
+  }
+
+  /* --- Start screen --- */
+  #startScreen{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:18px; padding:32px;
+    background:radial-gradient(circle at 50% 30%, #1a1d23 0%, #0B0D10 70%);
+    text-align:center; z-index:20;
+  }
+  #startScreen h1{
+    font-size:22px; letter-spacing:0.08em; text-transform:uppercase;
+    margin:0; font-weight:700; color:var(--text);
+  }
+  #startScreen h1 span{color:var(--amber);}
+  #startScreen p{color:var(--text-dim); font-size:14px; max-width:320px; line-height:1.5; margin:0;}
+  .bigbtn{
+    background:var(--amber); color:#111; border:none; border-radius:10px;
+    padding:14px 28px; font-size:15px; font-weight:700; letter-spacing:0.03em;
+    text-transform:uppercase; cursor:pointer;
+  }
+  .bigbtn:active{transform:scale(0.97);}
+  #startErr{color:var(--danger); font-size:13px; max-width:320px; display:none; font-family:var(--mono);}
+
+  /* --- Top bar --- */
+  #topbar{
+    position:absolute; top:0; left:0; right:0; z-index:10;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px 14px;
+    background:linear-gradient(to bottom, rgba(0,0,0,0.75), transparent);
+  }
+  #topbar .title{font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-dim); font-weight:600;}
+  #topbar .title b{color:var(--amber);}
+  .iconbtn{
+    background:rgba(20,23,28,0.85); border:1px solid var(--line); color:var(--text);
+    width:38px; height:38px; border-radius:9px; font-size:16px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .iconbtn:active{background:var(--panel-2);}
+
+  /* --- Bottom panel --- */
+  #bottompanel{
+    position:absolute; left:0; right:0; bottom:0; z-index:10;
+    background:linear-gradient(to top, rgba(11,13,16,0.97) 60%, rgba(11,13,16,0.75));
+    padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px) 12px;
+    border-top:1px solid var(--line);
+  }
+  #status{
+    font-size:12px; color:var(--text-dim); text-align:center; margin-bottom:10px;
+    min-height:16px; font-family:var(--mono);
+  }
+  #status b{color:var(--amber); font-weight:600;}
+
+  #cubeRow{display:flex; gap:6px; margin-bottom:10px;}
+  .cubeChip{
+    flex:1; background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:6px 4px; text-align:center; font-family:var(--mono);
+  }
+  .cubeChip .dot{width:9px; height:9px; border-radius:50%; margin:0 auto 4px auto;}
+  .cubeChip .lab{font-size:10px; color:var(--text-dim); letter-spacing:0.05em;}
+  .cubeChip .val{font-size:12px; color:var(--text); font-weight:600; margin-top:1px;}
+  .cubeChip.empty{opacity:0.35;}
+  .cubeChip.lost .dot{opacity:0.3;}
+  .cubeChip.lost .val{color:var(--danger);}
+  .cubeChip svg{display:block; width:100%; height:16px; margin-top:3px;}
+
+  #controls{display:flex; gap:8px;}
+  .btn{
+    flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text);
+    padding:11px 8px; border-radius:9px; font-size:12px; font-weight:600;
+    letter-spacing:0.03em; text-transform:uppercase; cursor:pointer; font-family:var(--sans);
+  }
+  .btn:active{background:var(--panel-2);}
+  .btn.primary{background:var(--amber); color:#111; border-color:var(--amber);}
+  .btn.warn{color:var(--danger); border-color:#4a2a2a;}
+  .btn:disabled{opacity:0.35; pointer-events:none;}
+
+  #calRow{
+    display:none; align-items:center; gap:8px; margin-bottom:10px;
+    background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:8px 10px;
+  }
+  #calRow input{
+    flex:1; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:8px; font-size:14px; font-family:var(--mono); min-width:0;
+  }
+  #calRow label{font-size:11px; color:var(--text-dim); white-space:nowrap;}
+  #calRow button{
+    background:var(--amber); color:#111; border:none; border-radius:6px;
+    padding:8px 12px; font-size:12px; font-weight:700; cursor:pointer;
+  }
+
+  #toast{
+    position:absolute; top:60px; left:50%; transform:translateX(-50%);
+    background:rgba(20,23,28,0.95); border:1px solid var(--line); color:var(--text);
+    padding:8px 14px; border-radius:20px; font-size:12px; font-family:var(--mono);
+    z-index:15; opacity:0; transition:opacity 0.3s; pointer-events:none; white-space:nowrap;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <video id="video" playsinline muted></video>
+  <canvas id="stage"></canvas>
+
+  <div id="topbar">
+    <div class="title">RIG <b>TRACKER</b></div>
+    <button class="iconbtn" id="flipBtn" title="Switch camera">⟲</button>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="bottompanel">
+    <div id="status">Draw a box around each prop &mdash; <b>0 / 5</b> marked</div>
+
+    <div id="cubeRow"></div>
+
+    <div id="calRow">
+      <label>Distance (m)</label>
+      <input id="calInput" type="number" inputmode="decimal" placeholder="e.g. 3.5" step="0.01" min="0">
+      <button id="calConfirm">Set</button>
+    </div>
+
+    <div id="controls">
+      <button class="btn" id="calBtn">Calibrate</button>
+      <button class="btn primary" id="trackBtn" disabled>Start</button>
+      <button class="btn" id="resetBtn">Reset</button>
+      <button class="btn" id="exportBtn" disabled>Export CSV</button>
+    </div>
+  </div>
+
+  <div id="startScreen">
+    <h1>Rig <span>Tracker</span></h1>
+    <p>Point your phone at the hanging props. You'll mark each one with a box, then track their vertical movement live.</p>
+    <button class="bigbtn" id="startBtn">Enable Camera</button>
+    <p id="startErr"></p>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const COLORS = ["#FF5C5C", "#5CC8FF", "#7CFF6B", "#FF8FE3", "#FFB627"];
+  const MAX_CUBES = 5;
+  const PROC_WIDTH = 320;          // downscaled width used for matching
+  const TRACK_INTERVAL_MS = 130;   // ~7.7 Hz tracking updates
+  const LOST_CONF_THRESHOLD = 0.42;
+  const UNCERTAIN_CONF_THRESHOLD = 0.6;
+
+  const video = document.getElementById('video');
+  const stage = document.getElementById('stage');
+  const ctx = stage.getContext('2d', {alpha:false});
+  const startScreen = document.getElementById('startScreen');
+  const startBtn = document.getElementById('startBtn');
+  const startErr = document.getElementById('startErr');
+  const flipBtn = document.getElementById('flipBtn');
+  const statusEl = document.getElementById('status');
+  const cubeRow = document.getElementById('cubeRow');
+  const trackBtn = document.getElementById('trackBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const calBtn = document.getElementById('calBtn');
+  const calRow = document.getElementById('calRow');
+  const calInput = document.getElementById('calInput');
+  const calConfirm = document.getElementById('calConfirm');
+  const toastEl = document.getElementById('toast');
+
+  // processing (offscreen, low-res) canvas
+  const proc = document.createElement('canvas');
+  const pctx = proc.getContext('2d', {willReadFrequently:true});
+
+  let stream = null;
+  let facingMode = 'environment';
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  let cubes = new Array(MAX_CUBES).fill(null); // each: {x,y,w,h (video-native), template:{data,w,h}, history:[], lost, conf}
+  let mode = 'setup'; // 'setup' | 'tracking' | 'paused'
+  let drag = null; // {slot, startCanvasX, startCanvasY, curCanvasX, curCanvasY, replacing}
+  let trackTimer = null;
+  let sessionStartT = null;
+
+  // calibration
+  let cal = {active:false, pts:[], pxPerMeter:null};
+
+  // ---------- utility ----------
+  function toast(msg, ms){
+    toastEl.textContent = msg;
+    toastEl.style.opacity = '1';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(()=>{ toastEl.style.opacity='0'; }, ms||1800);
+  }
+
+  function coverRect(canvasW, canvasH, vw, vh){
+    const canvasAspect = canvasW/canvasH, vAspect = vw/vh;
+    let sx,sy,sw,sh;
+    if (vAspect > canvasAspect){ sh = vh; sw = vh*canvasAspect; sx=(vw-sw)/2; sy=0; }
+    else { sw = vw; sh = vw/canvasAspect; sx=0; sy=(vh-sh)/2; }
+    return {sx,sy,sw,sh, scale: canvasW/sw};
+  }
+
+  function canvasToVideo(cx, cy, rect){
+    return [rect.sx + cx/rect.scale, rect.sy + cy/rect.scale];
+  }
+  function videoToCanvas(vx, vy, rect){
+    return [(vx - rect.sx)*rect.scale, (vy - rect.sy)*rect.scale];
+  }
+
+  function resizeStage(){
+    const w = window.innerWidth, h = window.innerHeight;
+    stage.width = Math.round(w*dpr);
+    stage.height = Math.round(h*dpr);
+    stage.style.width = w+'px';
+    stage.style.height = h+'px';
+  }
+
+  // ---------- camera ----------
+  async function startCamera(){
+    startErr.style.display = 'none';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      startErr.textContent = 'Camera API unavailable. This page must be opened over HTTPS (or localhost), not as a plain local file.';
+      startErr.style.display = 'block';
+      return;
+    }
+    try{
+      if (stream){ stream.getTracks().forEach(t=>t.stop()); }
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: {ideal: facingMode}, width:{ideal:1280}, height:{ideal:720} },
+        audio:false
+      });
+      video.srcObject = stream;
+      await video.play();
+      await new Promise(res=>{
+        if (video.readyState >= 2) return res();
+        video.onloadedmetadata = ()=>res();
+      });
+      resizeStage();
+      proc.width = PROC_WIDTH;
+      proc.height = Math.round(PROC_WIDTH * video.videoHeight / video.videoWidth);
+      startScreen.style.display = 'none';
+      requestAnimationFrame(renderLoop);
+    }catch(err){
+      let msg = 'Could not access the camera (' + (err.message || err.name) + ').';
+      if (location.protocol !== 'https:' && location.hostname !== 'localhost'){
+        msg += ' This page needs to be served over HTTPS.';
+      }
+      startErr.textContent = msg;
+      startErr.style.display = 'block';
+    }
+  }
+
+  flipBtn.addEventListener('click', ()=>{
+    facingMode = (facingMode === 'environment') ? 'user' : 'environment';
+    startCamera();
+  });
+
+  startBtn.addEventListener('click', startCamera);
+  window.addEventListener('resize', resizeStage);
+
+  // ---------- grayscale frame ----------
+  function grabGrayFrame(){
+    pctx.drawImage(video, 0, 0, proc.width, proc.height);
+    const img = pctx.getImageData(0, 0, proc.width, proc.height);
+    const d = img.data;
+    const gray = new Uint8ClampedArray(proc.width * proc.height);
+    for (let i=0, p=0; i<d.length; i+=4, p++){
+      gray[p] = (d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114) | 0;
+    }
+    return gray;
+  }
+
+  function procScale(){ return proc.width / video.videoWidth; }
+
+  function extractTemplate(gray, px, py, pw, ph){
+    pw = Math.max(6, Math.round(pw)); ph = Math.max(6, Math.round(ph));
+    px = Math.round(px); py = Math.round(py);
+    const data = new Uint8ClampedArray(pw*ph);
+    for (let yy=0; yy<ph; yy++){
+      const sy = Math.min(proc.height-1, Math.max(0, py+yy));
+      for (let xx=0; xx<pw; xx++){
+        const sx = Math.min(proc.width-1, Math.max(0, px+xx));
+        data[yy*pw+xx] = gray[sy*proc.width+sx];
+      }
+    }
+    return {data, w:pw, h:ph};
+  }
+
+  // ---------- tracking ----------
+  function trackFrame(){
+    if (video.readyState < 2) return;
+    const gray = grabGrayFrame();
+    const ps = procScale();
+    const now = performance.now();
+    const t = (now - sessionStartT)/1000;
+
+    for (let i=0;i<MAX_CUBES;i++){
+      const c = cubes[i];
+      if (!c || c.lost) continue;
+
+      const px = c.x*ps, py = c.y*ps, pw = c.template.w, ph = c.template.h;
+      const marginX = Math.max(8, Math.round(pw*0.6));
+      const marginY = Math.max(16, Math.round(ph*1.3));
+      const minX = Math.max(0, Math.round(px-marginX));
+      const maxX = Math.min(proc.width-pw, Math.round(px+marginX));
+      const minY = Math.max(0, Math.round(py-marginY));
+      const maxY = Math.min(proc.height-ph, Math.round(py+marginY));
+
+      let bestSAD = Infinity, bestX = px, bestY = py;
+      const stride = (pw*ph > 260) ? 2 : 1;
+      const sampleStride = (pw*ph > 400) ? 2 : 1;
+      const tmpl = c.template.data;
+
+      for (let cy=minY; cy<=maxY; cy+=stride){
+        for (let cx=minX; cx<=maxX; cx+=stride){
+          let sad = 0, n = 0;
+          for (let yy=0; yy<ph; yy+=sampleStride){
+            const rowOff = (cy+yy)*proc.width + cx;
+            const tRowOff = yy*pw;
+            for (let xx=0; xx<pw; xx+=sampleStride){
+              sad += Math.abs(gray[rowOff+xx] - tmpl[tRowOff+xx]);
+              n++;
+            }
+          }
+          const norm = sad/n;
+          if (norm < bestSAD){ bestSAD = norm; bestX = cx; bestY = cy; }
+        }
+      }
+
+      const confidence = 1 - Math.min(1, bestSAD/140);
+      c.conf = confidence;
+
+      if (confidence < LOST_CONF_THRESHOLD){
+        c.lost = true;
+      } else {
+        c.x = bestX/ps; c.y = bestY/ps;
+      }
+
+      const cyCenter = c.y + c.h/2;
+      c.history.push({t, y: cyCenter, lost: c.lost});
+      c.lastVel = computeVelocity(c);
+    }
+    updateCubeRow();
+  }
+
+  function computeVelocity(c){
+    const h = c.history;
+    if (h.length < 2) return 0;
+    const a = h[h.length-1], b = h[Math.max(0, h.length-6)];
+    const dt = a.t - b.t;
+    if (dt <= 0) return 0;
+    let dy = (b.y - a.y); // invert: up = positive
+    if (cal.pxPerMeter) dy = dy/cal.pxPerMeter;
+    return dy/dt;
+  }
+
+  // ---------- render ----------
+  function renderLoop(){
+    requestAnimationFrame(renderLoop);
+    if (video.readyState < 2) return;
+    const W = stage.width, H = stage.height;
+    const rect = coverRect(W, H, video.videoWidth, video.videoHeight);
+    ctx.drawImage(video, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, W, H);
+
+    // calibration points
+    if (cal.pts.length){
+      ctx.save();
+      ctx.strokeStyle = '#FFB627'; ctx.fillStyle = '#FFB627'; ctx.lineWidth = 2*dpr;
+      cal.pts.forEach(p=>{
+        const [cx,cy] = videoToCanvas(p[0], p[1], rect);
+        ctx.beginPath(); ctx.arc(cx,cy,6*dpr,0,Math.PI*2); ctx.fill();
+      });
+      if (cal.pts.length===2){
+        const [ax,ay] = videoToCanvas(cal.pts[0][0], cal.pts[0][1], rect);
+        const [bx,by] = videoToCanvas(cal.pts[1][0], cal.pts[1][1], rect);
+        ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // drag-in-progress box
+    if (drag){
+      ctx.save();
+      ctx.strokeStyle = COLORS[drag.slot];
+      ctx.lineWidth = 2*dpr;
+      ctx.setLineDash([6*dpr,4*dpr]);
+      const x = Math.min(drag.startCanvasX, drag.curCanvasX);
+      const y = Math.min(drag.startCanvasY, drag.curCanvasY);
+      const w = Math.abs(drag.curCanvasX-drag.startCanvasX);
+      const h = Math.abs(drag.curCanvasY-drag.startCanvasY);
+      ctx.strokeRect(x,y,w,h);
+      ctx.restore();
+    }
+
+    // cubes
+    for (let i=0;i<MAX_CUBES;i++){
+      const c = cubes[i];
+      if (!c) continue;
+      const [x1,y1] = videoToCanvas(c.x, c.y, rect);
+      const [x2,y2] = videoToCanvas(c.x+c.w, c.y+c.h, rect);
+      const color = COLORS[i];
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5*dpr;
+      ctx.setLineDash(c.lost ? [4*dpr,4*dpr] : (c.conf!=null && c.conf<UNCERTAIN_CONF_THRESHOLD ? [10*dpr,4*dpr] : []));
+      ctx.globalAlpha = c.lost ? 0.5 : 1;
+      ctx.strokeRect(x1,y1,x2-x1,y2-y1);
+
+      // label
+      ctx.setLineDash([]);
+      ctx.font = `${11*dpr}px var(--mono)`;
+      ctx.font = `700 ${11*dpr}px ui-monospace, monospace`;
+      const label = String(i+1) + (c.lost ? ' LOST' : '');
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = color;
+      ctx.fillRect(x1, y1-16*dpr, tw+10*dpr, 16*dpr);
+      ctx.fillStyle = '#111';
+      ctx.fillText(label, x1+5*dpr, y1-4*dpr);
+      ctx.restore();
+
+      // trail
+      if (c.history.length > 1){
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.65;
+        ctx.lineWidth = 2*dpr;
+        ctx.beginPath();
+        const centerXVideo = c.x + c.w/2;
+        const pts = c.history.slice(-60);
+        pts.forEach((p, idx)=>{
+          const [px,py] = videoToCanvas(centerXVideo, p.y, rect);
+          if (idx===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+        });
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  // ---------- pointer input ----------
+  function canvasPointFromEvent(e){
+    const r = stage.getBoundingClientRect();
+    return [ (e.clientX-r.left)*dpr, (e.clientY-r.top)*dpr ];
+  }
+
+  function nextEmptySlot(){
+    for (let i=0;i<MAX_CUBES;i++) if (!cubes[i]) return i;
+    return -1;
+  }
+
+  function slotAtCanvasPoint(cx, cy, rect){
+    const [vx,vy] = canvasToVideo(cx, cy, rect);
+    for (let i=0;i<MAX_CUBES;i++){
+      const c = cubes[i];
+      if (c && vx>=c.x && vx<=c.x+c.w && vy>=c.y && vy<=c.y+c.h) return i;
+    }
+    return -1;
+  }
+
+  stage.addEventListener('pointerdown', (e)=>{
+    if (mode === 'tracking') return; // must pause to redraw
+    const [cx,cy] = canvasPointFromEvent(e);
+
+    if (cal.active){
+      const W = stage.width, H = stage.height;
+      const rect = coverRect(W, H, video.videoWidth, video.videoHeight);
+      const [vx,vy] = canvasToVideo(cx, cy, rect);
+      cal.pts.push([vx,vy]);
+      if (cal.pts.length === 2){
+        calRow.style.display = 'flex';
+        calInput.focus();
+      }
+      return;
+    }
+
+    const W = stage.width, H = stage.height;
+    const rect = coverRect(W, H, video.videoWidth, video.videoHeight);
+    let slot = slotAtCanvasPoint(cx, cy, rect);
+    if (slot === -1) slot = nextEmptySlot();
+    if (slot === -1){ toast('All 5 slots are marked. Reset to start over.'); return; }
+
+    drag = {slot, startCanvasX:cx, startCanvasY:cy, curCanvasX:cx, curCanvasY:cy};
+    stage.setPointerCapture(e.pointerId);
+  });
+
+  stage.addEventListener('pointermove', (e)=>{
+    if (!drag) return;
+    const [cx,cy] = canvasPointFromEvent(e);
+    drag.curCanvasX = cx; drag.curCanvasY = cy;
+  });
+
+  stage.addEventListener('pointerup', (e)=>{
+    if (!drag) return;
+    const W = stage.width, H = stage.height;
+    const rect = coverRect(W, H, video.videoWidth, video.videoHeight);
+    const w = Math.abs(drag.curCanvasX-drag.startCanvasX);
+    const h = Math.abs(drag.curCanvasY-drag.startCanvasY);
+    if (w < 14*dpr || h < 14*dpr){ drag = null; return; } // too small, ignore
+
+    const x1c = Math.min(drag.startCanvasX, drag.curCanvasX);
+    const y1c = Math.min(drag.startCanvasY, drag.curCanvasY);
+    const [vx1, vy1] = canvasToVideo(x1c, y1c, rect);
+    const [vx2, vy2] = canvasToVideo(x1c+w, y1c+h, rect);
+
+    const gray = grabGrayFrame();
+    const ps = procScale();
+    const template = extractTemplate(gray, vx1*ps, vy1*ps, (vx2-vx1)*ps, (vy2-vy1)*ps);
+
+    cubes[drag.slot] = {
+      x:vx1, y:vy1, w:vx2-vx1, h:vy2-vy1,
+      template, history:[], lost:false, conf:1, lastVel:0
+    };
+    drag = null;
+    updateStatusSetup();
+    updateCubeRow();
+  });
+
+  // ---------- UI updates ----------
+  function markedCount(){ return cubes.filter(Boolean).length; }
+
+  function updateStatusSetup(){
+    const n = markedCount();
+    statusEl.innerHTML = n < MAX_CUBES
+      ? `Draw a box around each prop &mdash; <b>${n} / ${MAX_CUBES}</b> marked`
+      : `All <b>${MAX_CUBES}</b> props marked. Tap Start to begin tracking.`;
+    trackBtn.disabled = n === 0;
+    trackBtn.textContent = 'Start';
+  }
+
+  function fmtVal(c){
+    if (cal.pxPerMeter){
+      const height = (0 - c.y) / cal.pxPerMeter; // relative, arbitrary origin
+      return c.lastVel!=null ? `${c.lastVel.toFixed(2)} m/s` : '--';
+    }
+    return c.lastVel!=null ? `${c.lastVel.toFixed(0)} px/s` : '--';
+  }
+
+  function sparkline(c){
+    const pts = c.history.slice(-40);
+    if (pts.length < 2) return '';
+    const ys = pts.map(p=>p.y);
+    const min = Math.min(...ys), max = Math.max(...ys);
+    const range = Math.max(1, max-min);
+    const w = 100, h = 16;
+    const step = w/(pts.length-1);
+    let d = '';
+    pts.forEach((p,i)=>{
+      const x = i*step;
+      const y = h - ((p.y-min)/range)*h;
+      d += (i===0?'M':'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+    });
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  }
+
+  function updateCubeRow(){
+    cubeRow.innerHTML = '';
+    for (let i=0;i<MAX_CUBES;i++){
+      const c = cubes[i];
+      const div = document.createElement('div');
+      div.className = 'cubeChip' + (!c ? ' empty' : '') + (c && c.lost ? ' lost' : '');
+      if (!c){
+        div.innerHTML = `<div class="dot" style="background:${COLORS[i]}"></div><div class="lab">SLOT ${i+1}</div><div class="val">&mdash;</div>`;
+      } else {
+        div.style.color = COLORS[i];
+        div.innerHTML = `<div class="dot" style="background:${COLORS[i]}"></div>
+          <div class="lab" style="color:var(--text-dim)">CUBE ${i+1}</div>
+          <div class="val" style="color:var(--text)">${c.lost ? 'LOST' : fmtVal(c)}</div>
+          ${sparkline(c)}`;
+      }
+      cubeRow.appendChild(div);
+    }
+  }
+
+  // ---------- controls ----------
+  trackBtn.addEventListener('click', ()=>{
+    if (mode === 'tracking'){
+      mode = 'paused';
+      clearInterval(trackTimer);
+      trackBtn.textContent = 'Resume';
+      trackBtn.classList.remove('primary');
+      statusEl.innerHTML = 'Paused. Tap a box to redraw it, or Resume.';
+    } else {
+      mode = 'tracking';
+      if (sessionStartT === null) sessionStartT = performance.now();
+      trackTimer = setInterval(trackFrame, TRACK_INTERVAL_MS);
+      trackBtn.textContent = 'Pause';
+      trackBtn.classList.add('primary');
+      statusEl.innerHTML = 'Tracking live &mdash; tap Pause to stop.';
+      exportBtn.disabled = false;
+    }
+  });
+
+  resetBtn.addEventListener('click', ()=>{
+    mode = 'setup';
+    clearInterval(trackTimer);
+    cubes = new Array(MAX_CUBES).fill(null);
+    sessionStartT = null;
+    cal = {active:false, pts:[], pxPerMeter:null};
+    calRow.style.display = 'none';
+    calBtn.textContent = 'Calibrate';
+    trackBtn.textContent = 'Start';
+    trackBtn.classList.remove('primary');
+    exportBtn.disabled = true;
+    updateStatusSetup();
+    updateCubeRow();
+    toast('Reset');
+  });
+
+  calBtn.addEventListener('click', ()=>{
+    if (mode === 'tracking'){ toast('Pause tracking first'); return; }
+    cal.active = !cal.active;
+    cal.pts = [];
+    calRow.style.display = 'none';
+    calBtn.textContent = cal.active ? 'Cancel Calibrate' : 'Calibrate';
+    if (cal.active) toast('Tap two points a known distance apart');
+  });
+
+  calConfirm.addEventListener('click', ()=>{
+    const meters = parseFloat(calInput.value);
+    if (!meters || meters <= 0 || cal.pts.length < 2){ toast('Enter a valid distance'); return; }
+    const [x1,y1] = cal.pts[0], [x2,y2] = cal.pts[1];
+    const pxDist = Math.hypot(x2-x1, y2-y1);
+    cal.pxPerMeter = pxDist / meters;
+    cal.active = false;
+    calRow.style.display = 'none';
+    calBtn.textContent = 'Calibrate ✓';
+    toast('Calibrated: ' + cal.pxPerMeter.toFixed(1) + ' px/m');
+  });
+
+  exportBtn.addEventListener('click', ()=>{
+    let rows = ['cube,elapsed_s,y_px' + (cal.pxPerMeter ? ',height_m' : '')];
+    for (let i=0;i<MAX_CUBES;i++){
+      const c = cubes[i];
+      if (!c) continue;
+      c.history.forEach(p=>{
+        let row = `${i+1},${p.t.toFixed(3)},${p.y.toFixed(1)}`;
+        if (cal.pxPerMeter) row += `,${(-p.y/cal.pxPerMeter).toFixed(3)}`;
+        rows.push(row);
+      });
+    }
+    const csv = rows.join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'rig-tracker-' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(csv).catch(()=>{});
+    }
+    toast('CSV downloaded (and copied to clipboard)');
+  });
+
+  // init
+  updateStatusSetup();
+  updateCubeRow();
+})();
+</script>
+</body>
+</html>
